@@ -1,4 +1,4 @@
-name: Deploy Team Portal
+name: Ship Team Portal
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
     paths:
       - 'frontend/**'
       - 'backend/**'
-      - '.github/workflows/ship.yml'
+      - '.github/workflows/shipping.yml'
       - 'config/**'
       - '.shipyard/**'
   pull_request:
@@ -59,8 +59,11 @@ jobs:
       - name: Set version identifier
         id: version
         run: |
+          # Create a unique version tag using timestamp and commit SHA
           TAG_VERSION=$(date +'%Y%m%d%H%M%S')-${GITHUB_SHA::8}
+          # Set as environment variable for this job
           echo "TAG_VERSION=$TAG_VERSION" >> $GITHUB_ENV
+          # Set as output for other jobs to reference
           echo "tag_version=$TAG_VERSION" >> $GITHUB_OUTPUT
       
       - name: Set up Docker Buildx
@@ -78,8 +81,8 @@ jobs:
         with:
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
-            ghcr.io/organization/frontend:latest
-            ghcr.io/organization/frontend:${{ steps.version.outputs.tag_version }}
+            ghcr.io/yourorg/backend:latest
+            ghcr.io/yourorg/backend:${{ steps.version.outputs.tag_version }}
           context: ./backend
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -97,8 +100,11 @@ jobs:
       - name: Set version identifier
         id: version
         run: |
+          # Create a unique version tag using timestamp and commit SHA
           TAG_VERSION=$(date +'%Y%m%d%H%M%S')-${GITHUB_SHA::8}
+          # Set as environment variable for this job 
           echo "TAG_VERSION=$TAG_VERSION" >> $GITHUB_ENV
+          # Set as output for other jobs to reference
           echo "tag_version=$TAG_VERSION" >> $GITHUB_OUTPUT
       
       - name: Set up Docker Buildx
@@ -116,13 +122,13 @@ jobs:
         with:
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
-            ghcr.io/organization/team-portal-frontend:latest
-            ghcr.io/organization/team-portal-frontend:${{ steps.version.outputs.tag_version }}
+            ghcr.io/yourorg/frontend:latest
+            ghcr.io/yourorg/frontend:${{ steps.version.outputs.tag_version }}
           context: ./frontend
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy:
+  ship:
     needs: [build-auth, build-frontend]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
@@ -135,15 +141,15 @@ jobs:
         run: |
           # If auth service was built, update its image tag
           if [ -n "${{ needs.build-auth.outputs.tag_version }}" ]; then
-            sed -i "s|image: \"ghcr.io/organization/frontend:.*\"|image: \"ghcr.io/organization/frontend:${{ needs.build-auth.outputs.tag_version }}\"|g" .shipyard/config.yml
+            sed -i "s|image: \"ghcr.io/yourorg/backend:.*\"|image: \"ghcr.io/yourorg/backend:${{ needs.build-auth.outputs.tag_version }}\"|g" .shipyard/config.yml
           fi
           
           # If frontend was built, update its image tag
           if [ -n "${{ needs.build-frontend.outputs.tag_version }}" ]; then
-            sed -i "s|image: \"ghcr.io/organization/team-portal-frontend:.*\"|image: \"ghcr.io/organization/team-portal-frontend:${{ needs.build-frontend.outputs.tag_version }}\"|g" .shipyard/config.yml
+            sed -i "s|image: \"ghcr.io/yourorg/frontend:.*\"|image: \"ghcr.io/yourorg/frontend:${{ needs.build-frontend.outputs.tag_version }}\"|g" .shipyard/config.yml
           fi
       
-      - name: Deploy with Shipyard
+      - name: Ship with Shipyard
         uses: elijahmont3x/shipyard-action@master
         with:
           config: '.shipyard/config.yml'
@@ -154,6 +160,7 @@ jobs:
           environment: 'production'
           timeout: 30
         env:
+          # Environment variables needed by your applications
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           JWT_EXPIRY: ${{ secrets.JWT_EXPIRY || '30m' }}
           SSL_EMAIL: ${{ secrets.SSL_EMAIL }}

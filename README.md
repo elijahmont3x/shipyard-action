@@ -14,13 +14,14 @@ A GitHub Action for deploying multi-application setups with persistent services,
 - **Security scanning**: Scan container images for vulnerabilities
 - **User-friendly configuration**: Simple YAML configuration file
 - **External verification**: Validates that applications are accessible from the internet
+- **End-to-end shipping**: Full lifecycle from build to production delivery
 
 ## Usage
 
-Add the following to your GitHub workflow file:
+Add the following to your GitHub workflow file (typically named `shipping.yml`):
 
 ```yaml
-name: Deploy
+name: Ship Application
 
 on:
   push:
@@ -41,6 +42,10 @@ jobs:
           dns_provider: 'cloudflare'
           dns_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           environment: 'production'
+        env:
+          # Pass any environment variables needed by your applications
+          API_KEY: ${{ secrets.API_KEY }}
+          DATABASE_PASSWORD: ${{ secrets.DB_PASSWORD }}
 ```
 
 ## Configuration
@@ -200,10 +205,80 @@ After a successful deployment, Shipyard automatically:
 1. Constructs the public URLs for each application based on your domain, subdomain, and path configuration
 2. Makes HTTP(S) requests to each URL to verify they're publicly accessible
 3. Implements retry logic with exponential backoff to account for DNS propagation delays
-4. Verifies both the main application URL and health check endpoints
-5. Reports success or failure with detailed logs
+4. Reports success or failure with detailed logs
 
 This ensures that your applications are not just running in containers, but actually accessible to users on the internet.
+
+#### Do I need a separate verification step in my workflow?
+
+No. Shipyard automatically performs external verification after successful deployment. There's no need to add a separate verification step in your GitHub workflow.
+
+## Complete Example
+
+Below is a complete example of a shipping workflow:
+
+```yaml
+name: Ship Application
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - '.github/workflows/shipping.yml'
+      - '.shipyard/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      tag_version: ${{ steps.version.outputs.tag_version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set version identifier
+        id: version
+        run: |
+          TAG_VERSION=$(date +'%Y%m%d%H%M%S')-${GITHUB_SHA::8}
+          echo "TAG_VERSION=$TAG_VERSION" >> $GITHUB_ENV
+          echo "tag_version=$TAG_VERSION" >> $GITHUB_OUTPUT
+      
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          tags: |
+            ghcr.io/myorg/myapp:latest
+            ghcr.io/myorg/myapp:${{ env.TAG_VERSION }}
+          context: .
+  
+  ship:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Update image tag in config
+        run: |
+          sed -i "s|image: \"ghcr.io/myorg/myapp:.*\"|image: \"ghcr.io/myorg/myapp:${{ needs.build.outputs.tag_version }}\"|g" .shipyard/config.yml
+      
+      - name: Deploy with Shipyard
+        uses: elijahmont3x/shipyard-action@master
+        with:
+          config: '.shipyard/config.yml'
+          docker_host: 'ssh://${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}'
+          log_level: 'info'
+          dns_provider: 'cloudflare'
+          dns_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          environment: 'production'
+          timeout: 30
+        env:
+          APP_SECRET: ${{ secrets.APP_SECRET }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+```
 
 ## Development
 

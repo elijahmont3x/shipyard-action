@@ -36,7 +36,7 @@ services:
 
 apps:
   - name: "auth-service"
-    image: "ghcr.io/luigicto286/team-portal-auth:latest"
+    image: "ghcr.io/yourorg/backend:latest"
     subdomain: "team"
     path: "/api"
     environment:
@@ -62,7 +62,7 @@ apps:
       startPeriod: 30
 
   - name: "frontend"
-    image: "ghcr.io/luigicto286/team-portal-frontend:latest"
+    image: "ghcr.io/yourorg/frontend:latest"
     subdomain: "team"
     path: "/"
     environment:
