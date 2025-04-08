@@ -1,0 +1,162 @@
+name: Deploy Team Portal
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - '.github/workflows/ship.yml'
+      - 'config/**'
+      - '.shipyard/**'
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly cleanup
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      auth: ${{ steps.filter.outputs.auth }}
+      config: ${{ steps.filter.outputs.config }}
+      shipyard: ${{ steps.filter.outputs.shipyard }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      
+      - name: Filter changes
+        uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+            auth:
+              - 'backend/**'
+            config:
+              - 'config/**'
+            shipyard:
+              - '.shipyard/**'
+  
+  build-auth:
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.auth == 'true' || needs.detect-changes.outputs.config == 'true' || github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    outputs:
+      tag_version: ${{ steps.version.outputs.tag_version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set version identifier
+        id: version
+        run: |
+          TAG_VERSION=$(date +'%Y%m%d%H%M%S')-${GITHUB_SHA::8}
+          echo "TAG_VERSION=$TAG_VERSION" >> $GITHUB_ENV
+          echo "tag_version=$TAG_VERSION" >> $GITHUB_OUTPUT
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Build and push Auth Service image
+        uses: docker/build-push-action@v5
+        with:
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ghcr.io/organization/frontend:latest
+            ghcr.io/organization/frontend:${{ steps.version.outputs.tag_version }}
+          context: ./backend
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  
+  build-frontend:
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.config == 'true' || github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    outputs:
+      tag_version: ${{ steps.version.outputs.tag_version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set version identifier
+        id: version
+        run: |
+          TAG_VERSION=$(date +'%Y%m%d%H%M%S')-${GITHUB_SHA::8}
+          echo "TAG_VERSION=$TAG_VERSION" >> $GITHUB_ENV
+          echo "tag_version=$TAG_VERSION" >> $GITHUB_OUTPUT
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Build and push Frontend image
+        uses: docker/build-push-action@v5
+        with:
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ghcr.io/organization/team-portal-frontend:latest
+            ghcr.io/organization/team-portal-frontend:${{ steps.version.outputs.tag_version }}
+          context: ./frontend
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: [build-auth, build-frontend]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Update Shipyard config with latest image tags
+        if: ${{ needs.build-auth.outputs.tag_version != '' || needs.build-frontend.outputs.tag_version != '' }}
+        run: |
+          # If auth service was built, update its image tag
+          if [ -n "${{ needs.build-auth.outputs.tag_version }}" ]; then
+            sed -i "s|image: \"ghcr.io/organization/frontend:.*\"|image: \"ghcr.io/organization/frontend:${{ needs.build-auth.outputs.tag_version }}\"|g" .shipyard/config.yml
+          fi
+          
+          # If frontend was built, update its image tag
+          if [ -n "${{ needs.build-frontend.outputs.tag_version }}" ]; then
+            sed -i "s|image: \"ghcr.io/organization/team-portal-frontend:.*\"|image: \"ghcr.io/organization/team-portal-frontend:${{ needs.build-frontend.outputs.tag_version }}\"|g" .shipyard/config.yml
+          fi
+      
+      - name: Deploy with Shipyard
+        uses: elijahmont3x/shipyard-action@master
+        with:
+          config: '.shipyard/config.yml'
+          docker_host: 'ssh://${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}'
+          log_level: 'info'
+          dns_provider: 'godaddy'
+          dns_api_token: ${{ secrets.DNS_CREDENTIALS }}
+          environment: 'production'
+          timeout: 30
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          JWT_EXPIRY: ${{ secrets.JWT_EXPIRY || '30m' }}
+          SSL_EMAIL: ${{ secrets.SSL_EMAIL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_ENABLED: ${{ secrets.TELEGRAM_ENABLED || 'false' }}

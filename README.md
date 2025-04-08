@@ -13,6 +13,7 @@ A GitHub Action for deploying multi-application setups with persistent services,
 - **Master proxy**: Route to multiple apps via subdomains or paths
 - **Security scanning**: Scan container images for vulnerabilities
 - **User-friendly configuration**: Simple YAML configuration file
+- **External verification**: Validates that applications are accessible from the internet
 
 ## Usage
 
@@ -32,7 +33,7 @@ jobs:
       - uses: actions/checkout@v3
       
       - name: Deploy with Shipyard
-        uses: elijahmont3x/shipyard-action@main
+        uses: elijahmont3x/shipyard-action@master
         with:
           config: '.shipyard/config.yml'
           docker_host: 'unix:///var/run/docker.sock'
@@ -191,6 +192,18 @@ For TCP health checks:
 - For backend services: It's recommended to implement a lightweight health endpoint that checks critical dependencies
 - For static frontends: No special files are needed - the existing index.html works perfectly
 - For databases and caches: TCP health checks to the service port are usually sufficient
+
+#### How does external verification work?
+
+After a successful deployment, Shipyard automatically:
+
+1. Constructs the public URLs for each application based on your domain, subdomain, and path configuration
+2. Makes HTTP(S) requests to each URL to verify they're publicly accessible
+3. Implements retry logic with exponential backoff to account for DNS propagation delays
+4. Verifies both the main application URL and health check endpoints
+5. Reports success or failure with detailed logs
+
+This ensures that your applications are not just running in containers, but actually accessible to users on the internet.
 
 ## Development
 

@@ -57,5 +57,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Add external verification
+	logger.Info("Deployment successful, performing external verification")
+	if err := manager.VerifyExternalAccess(ctx); err != nil {
+		logger.Warn("External verification failed, but deployment was successful", "error", err)
+		// We don't exit with error here since the deployment itself was successful
+		// This just provides additional verification
+	} else {
+		logger.Info("External verification successful - Your application is accessible from the internet! 🚀")
+	}
+
 	logger.Info("Deployment completed successfully")
 }
