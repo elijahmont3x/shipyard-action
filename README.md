@@ -154,6 +154,44 @@ For SSL certificate validation via DNS challenge, the following providers are su
 - Azure DNS
 - And many more...
 
+## FAQ
+
+### Health Checks
+
+#### How do health checks work for different types of applications?
+
+- **Backend services**: These typically provide a dedicated health endpoint (e.g., `/health` or `/ping`) that checks database connections, cache availability, and other critical dependencies. These endpoints return a 200 OK status when everything is functioning correctly.
+
+- **Static frontends**: For static web applications (served by Nginx, Apache, etc.), a health check to the root path (`/`) is usually sufficient. This checks that the web server is up and serving content correctly.
+
+#### Why is checking the root path sufficient for static frontends?
+
+When Shipyard performs a health check on a static frontend with `path: "/"`:
+
+1. It makes an HTTP GET request to the container's web server
+2. The web server serves the index.html file with a 200 OK response
+3. This confirms the web server is running and properly configured to serve your content
+
+This approach verifies exactly what a real user would experience when visiting your site, making it an ideal health check without requiring additional configuration.
+
+#### What happens during a health check?
+
+For HTTP health checks:
+- After container startup, Shipyard waits for the configured `startPeriod`
+- It then makes HTTP requests at the specified `interval` 
+- Each request must return a 2xx status code within the `timeout` period
+- If a check fails, it retries up to the configured `retries` count
+- If all retries fail, the container is considered unhealthy
+
+For TCP health checks:
+- Similar to HTTP checks, but simply verifies that the specified port accepts connections
+
+#### Do I need special files for health checks?
+
+- For backend services: It's recommended to implement a lightweight health endpoint that checks critical dependencies
+- For static frontends: No special files are needed - the existing index.html works perfectly
+- For databases and caches: TCP health checks to the service port are usually sufficient
+
 ## Development
 
 ### Prerequisites

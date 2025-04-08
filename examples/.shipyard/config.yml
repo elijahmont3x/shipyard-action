@@ -1,0 +1,93 @@
+version: "1.0"
+domain: "${DOMAIN_NAME}"
+
+ssl:
+  enabled: true
+  provider: "letsencrypt"
+  email: "${SSL_EMAIL}"
+  selfSigned: false
+  dnsChallenge: true
+  dnsProvider: "godaddy"
+  dnsCredentials:
+    GD_KEY: "${DNS_CREDENTIALS}"
+
+proxy:
+  type: "nginx"
+  port: 80
+  httpsPort: 443
+
+services:
+  - name: "redis"
+    image: "redis:alpine"
+    environment: {}
+    ports:
+      - "6379:6379"
+    volumes:
+      - source: "redis-data"
+        destination: "/data"
+        type: "volume"
+    healthCheck:
+      type: "tcp"
+      port: 6379
+      interval: 10
+      timeout: 5
+      retries: 3
+      startPeriod: 10
+
+apps:
+  - name: "auth-service"
+    image: "ghcr.io/luigicto286/team-portal-auth:latest"
+    subdomain: "team"
+    path: "/api"
+    environment:
+      NODE_ENV: "production"
+      JWT_SECRET: "${JWT_SECRET}"
+      JWT_EXPIRY: "${JWT_EXPIRY}"
+      REDIS_URL: "redis://redis:6379"
+      LOG_LEVEL: "info"
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN}"
+      TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID}"
+      TELEGRAM_ENABLED: "${TELEGRAM_ENABLED}"
+    ports:
+      - "3000:3000"
+    dependsOn:
+      - "redis"
+    healthCheck:
+      type: "http"
+      path: "/health"
+      port: 3000
+      interval: 10
+      timeout: 5
+      retries: 3
+      startPeriod: 30
+
+  - name: "frontend"
+    image: "ghcr.io/luigicto286/team-portal-frontend:latest"
+    subdomain: "team"
+    path: "/"
+    environment:
+      NODE_ENV: "production"
+      API_URL: "https://team.${DOMAIN_NAME}/api"
+    ports:
+      - "80:80"
+    dependsOn:
+      - "auth-service"
+    healthCheck:
+      type: "http"
+      path: "/"
+      port: 80
+      interval: 10
+      timeout: 5
+      retries: 3
+      startPeriod: 15
+
+cleanup:
+  images:
+    enabled: true
+    olderThan: "168h"  # 7 days
+  volumes:
+    enabled: false  # Don't clean up volumes to preserve data
+  networks:
+    enabled: true
+  preserveVolumes:
+    - "redis-data"
