@@ -7,7 +7,6 @@ import (
 
 	"github.com/elijahmont3x/shipyard-action/pkg/config"
 	"github.com/elijahmont3x/shipyard-action/pkg/docker"
-	verification "github.com/elijahmont3x/shipyard-action/pkg/end"
 	"github.com/elijahmont3x/shipyard-action/pkg/health"
 	"github.com/elijahmont3x/shipyard-action/pkg/log"
 	"github.com/elijahmont3x/shipyard-action/pkg/proxy"
@@ -467,11 +466,11 @@ func reverseServices(services []config.Service) []config.Service {
 func (m *Manager) VerifyExternalAccess(ctx context.Context) error {
 	m.logger.Info("Starting external verification")
 
-	// Create a verifier - using the same logger pattern as other components
-	verifier := verification.NewExternalVerifier(m.config, m.logger)
+	// Create an external verifier to check public accessibility
+	externalVerifier := health.NewExternalVerifier(m.config, m.logger)
 
-	// Run verification
-	if err := verifier.VerifyExternalAccess(ctx); err != nil {
+	// Verify all applications are accessible from the internet
+	if err := externalVerifier.VerifyExternalAccess(ctx); err != nil {
 		m.logger.Error("External verification failed", "error", err)
 		return err
 	}
