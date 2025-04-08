@@ -1,0 +1,43 @@
+name: 'Shipyard Deployment'
+description: 'Deploy multiple applications with persistent services, SSL, and health checks'
+author: 'elijahmont3x'
+branding:
+  icon: 'anchor'
+  color: 'blue'
+
+inputs:
+  config:
+    description: 'Path to the shipyard configuration file'
+    required: true
+    default: '.shipyard/config.yml'
+  docker_host:
+    description: 'Docker host URL'
+    required: false
+    default: 'unix:///var/run/docker.sock'
+  log_level:
+    description: 'Log level (debug, info, warn, error)'
+    required: false
+    default: 'info'
+  timeout:
+    description: 'Global timeout for deployment in minutes'
+    required: false
+    default: '30'
+  skip_security_scan:
+    description: 'Skip security scanning of container images'
+    required: false
+    default: 'false'
+  dns_provider:
+    description: 'DNS provider for SSL certificate validation'
+    required: false
+    default: 'none'
+  dns_api_token:
+    description: 'API token for DNS provider'
+    required: false
+  environment:
+    description: 'Deployment environment (development, staging, production)'
+    required: false
+    default: 'development'
+
+runs:
+  using: 'docker'
+  image: 'Dockerfile'
